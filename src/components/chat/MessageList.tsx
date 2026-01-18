@@ -1,0 +1,40 @@
+import { useEffect, useRef } from 'react';
+import type { Message } from '../../types';
+import { MessageBubble } from './MessageBubble';
+
+interface MessageListProps {
+  messages: Message[];
+  isSending: boolean;
+}
+
+export function MessageList({ messages, isSending }: MessageListProps) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isSending]);
+
+  return (
+    <div className="flex-1 overflow-y-auto px-4 py-4">
+      {messages.map((message) => (
+        <MessageBubble key={message.id} message={message} />
+      ))}
+
+      {/* Typing indicator */}
+      {isSending && (
+        <div className="flex justify-start mb-3">
+          <div className="bg-gray-100 rounded-2xl rounded-bl-md px-4 py-3">
+            <div className="flex gap-1">
+              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div ref={bottomRef} />
+    </div>
+  );
+}
