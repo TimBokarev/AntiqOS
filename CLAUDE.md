@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 AntiqOS is a QR-Chat service for art objects. Visitors scan a QR code and open a chat with a virtual character (statue, exhibit). No authentication required.
 
+**Repository**: https://github.com/TimBokarev/AntiqOS
+
 ## Commands
 
 ```bash
@@ -13,6 +15,10 @@ npm run dev      # Start development server
 npm run build    # Type-check and build for production
 npm run lint     # Run ESLint
 npm run preview  # Preview production build
+
+# Database commands
+npm run sql "SELECT * FROM entities"     # Execute any SQL query
+npm run db:init                          # Apply supabase/schema.sql
 ```
 
 ## Tech Stack
@@ -37,7 +43,7 @@ npm run preview  # Preview production build
 - **useVoiceRecorder** - MediaRecorder API wrapper for voice messages
 
 ### API Events (`src/services/api.ts`)
-All requests go to single n8n webhook endpoint:
+All requests go to single n8n webhook endpoint (handles n8n array response automatically):
 - `load` - Initialize or restore session
 - `message` - Send text/image/audio message
 - `reset` - Clear chat (new thread, same session)
@@ -66,11 +72,14 @@ Copy `.env.example` to `.env`:
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 VITE_API_URL=https://n8n.bookvalia.com/webhook/AntiqOS
+DATABASE_URL=postgresql://postgres.[ref]:[pass]@db.[ref].supabase.co:5432/postgres
 ```
+
+`DATABASE_URL` is required for `npm run sql` commands. Find it in Supabase Dashboard → Settings → Database → Connection string → URI.
 
 ## Database Setup
 
-Run `supabase/schema.sql` in Supabase SQL Editor. Creates:
+Run `npm run db:init` or execute `supabase/schema.sql` manually. Creates:
 - `entities` - Characters/objects with prompts
 - `sessions` - User sessions with thread_id
 - `messages` - Chat history
