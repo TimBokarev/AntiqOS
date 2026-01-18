@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Entity, Message, ContentType } from '../types';
+import type { EntityInfo, Message, ContentType } from '../types';
 import { loadSession, sendMessage, resetChat, wipeSession } from '../services/api';
 import { useSession } from './useSession';
 import { uploadImage, uploadVoiceRecording } from '../services/supabase';
@@ -11,12 +11,13 @@ interface UseChatOptions {
 }
 
 interface UseChatReturn {
-  entity: Entity | null;
+  entity: EntityInfo | null;
   messages: Message[];
   isLoading: boolean;
   isSending: boolean;
   error: string | null;
   sessionId: string | null;
+  introUrl: string | null;
   sendTextMessage: (text: string) => Promise<void>;
   sendImageMessage: (file: Blob) => Promise<void>;
   sendVoiceMessage: (file: Blob) => Promise<void>;
@@ -28,13 +29,14 @@ export function useChat({ entitySlug, initialSessionId }: UseChatOptions): UseCh
   const navigate = useNavigate();
   const { getStoredSession, saveSession, updateThreadId, clearSession } = useSession(entitySlug);
 
-  const [entity, setEntity] = useState<Entity | null>(null);
+  const [entity, setEntity] = useState<EntityInfo | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(initialSessionId || null);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [introUrl, setIntroUrl] = useState<string | null>(null);
 
   // Initialize session on mount
   useEffect(() => {
@@ -49,21 +51,29 @@ export function useChat({ entitySlug, initialSessionId }: UseChatOptions): UseCh
 
         const response = await loadSession(entitySlug, sessionToLoad);
 
-        if (response.success) {
-          setEntity(response.entity);
-          setMessages(response.messages);
-          setSessionId(response.session_id);
-          setThreadId(response.thread_id);
+        setEntity(response.entity);
+        setIntroUrl(response.entity.intro_url || null);
+        setSessionId(response.session_id);
+        setThreadId(response.thread_id);
 
-          // Save to localStorage
-          saveSession(response.session_id, response.thread_id);
+        // Create welcome message locally
+        const welcomeMessage: Message = {
+          id: `welcome-${Date.now()}`,
+          session_id: response.session_id,
+          thread_id: response.thread_id,
+          role: 'assistant',
+          content_type: 'text',
+          content: response.welcome_message,
+          created_at: new Date().toISOString(),
+        };
+        setMessages([welcomeMessage]);
 
-          // Update URL if session_id is different
-          if (!initialSessionId || initialSessionId !== response.session_id) {
-            navigate(`/${entitySlug}/${response.session_id}`, { replace: true });
-          }
-        } else {
-          setError('Failed to load session');
+        // Save to localStorage
+        saveSession(response.session_id, response.thread_id);
+
+        // Update URL if session_id is different
+        if (!initialSessionId || initialSessionId !== response.session_id) {
+          navigate(`/${entitySlug}/${response.session_id}`, { replace: true });
         }
       } catch (e) {
         console.error('Failed to initialize chat:', e);
@@ -84,17 +94,42 @@ export function useChat({ entitySlug, initialSessionId }: UseChatOptions): UseCh
       setIsSending(true);
       setError(null);
 
+      // Create user message locally (optimistic UI)
+      const userMessage: Message = {
+        id: `temp-${Date.now()}`,
+        session_id: sessionId,
+        thread_id: threadId,
+        role: 'user',
+        content_type: type,
+        content,
+        media_url: mediaUrl,
+        created_at: new Date().toISOString(),
+      };
+
+      // Add user message immediately
+      setMessages((prev) => [...prev, userMessage]);
+
       try {
         const response = await sendMessage(entitySlug, sessionId, threadId, type, content, mediaUrl);
 
-        if (response.success) {
-          setMessages((prev) => [...prev, response.user_message, response.assistant_message]);
-        } else {
-          setError('Failed to send message');
-        }
+        // Create assistant message from response
+        const assistantMessage: Message = {
+          id: `msg-${Date.now()}`,
+          session_id: response.session_id,
+          thread_id: response.thread_id,
+          role: 'assistant',
+          content_type: response.type,
+          content: response.content,
+          media_url: response.media_url,
+          created_at: new Date().toISOString(),
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
       } catch (e) {
         console.error('Failed to send message:', e);
         setError('Failed to send message');
+        // Remove optimistic user message on error
+        setMessages((prev) => prev.filter((m) => m.id !== userMessage.id));
       } finally {
         setIsSending(false);
       }
@@ -214,6 +249,7 @@ export function useChat({ entitySlug, initialSessionId }: UseChatOptions): UseCh
     isSending,
     error,
     sessionId,
+    introUrl,
     sendTextMessage,
     sendImageMessage,
     sendVoiceMessage,

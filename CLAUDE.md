@@ -32,13 +32,18 @@ npm run db:init                          # Apply supabase/schema.sql
 ### Data Flow
 1. User scans QR → opens `/:entity_slug` route
 2. `useChat` hook calls n8n webhook with `load` event
-3. Webhook returns entity info, session_id, thread_id, messages
+3. Webhook returns `{ session_id, thread_id, entity: EntityInfo, welcome_message }`
 4. URL updates to `/:entity_slug/:session_id`
 5. Messages sent via webhook `message` event
 6. Session persisted in localStorage via `useSession` hook
 
+### Types (`src/types/index.ts`)
+- **Entity** - Full DB entity (id, slug, name, subtitle, avatar_url, intro_url, welcome_message, system_prompt, is_active, created_at)
+- **EntityInfo** - Simplified for client (name, subtitle, avatar_url, intro_url)
+- **LoadResponse** - `{ session_id, thread_id, entity: EntityInfo, welcome_message }`
+
 ### Key Hooks (`src/hooks/`)
-- **useChat** - Main chat logic: load session, send messages (text/image/audio), reset/wipe
+- **useChat** - Main chat logic: load session, send messages (text/image/audio), reset/wipe. Returns `introUrl` for intro image
 - **useSession** - localStorage persistence for session_id and thread_id
 - **useVoiceRecorder** - MediaRecorder API wrapper for voice messages
 
@@ -58,7 +63,7 @@ All requests go to single n8n webhook endpoint (handles n8n array response autom
 ChatPage
 └── ChatContainer
     ├── ChatHeader (avatar, menu with reset/wipe)
-    ├── MessageList
+    ├── MessageList (intro image + messages)
     │   └── MessageBubble (text/image/audio rendering)
     └── MessageInput
         ├── ImageUploader (camera/gallery picker)
@@ -80,7 +85,7 @@ DATABASE_URL=postgresql://postgres.[ref]:[pass]@db.[ref].supabase.co:5432/postgr
 ## Database Setup
 
 Run `npm run db:init` or execute `supabase/schema.sql` manually. Creates:
-- `entities` - Characters/objects with prompts
+- `entities` - Characters/objects with prompts, avatar_url, intro_url
 - `sessions` - User sessions with thread_id
 - `messages` - Chat history
 - Storage buckets: `entity-avatars`, `user-uploads`, `voice-recordings`

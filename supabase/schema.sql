@@ -13,6 +13,7 @@ CREATE TABLE entities (
     name VARCHAR(255) NOT NULL,             -- "Медуза Горгона"
     subtitle VARCHAR(255),                  -- "Хранительница галереи"
     avatar_url TEXT,
+    intro_url TEXT,                         -- Картинка перед приветствием
     welcome_message TEXT NOT NULL,
     system_prompt TEXT,                     -- Промпт для LLM
     is_active BOOLEAN DEFAULT true,

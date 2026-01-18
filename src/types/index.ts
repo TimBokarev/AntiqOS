@@ -1,14 +1,23 @@
-// Entity (персонаж/объект)
+// Entity (персонаж/объект) - полная версия для БД
 export interface Entity {
   id: string;
   slug: string;
   name: string;
   subtitle?: string;
   avatar_url?: string;
+  intro_url?: string;
   welcome_message: string;
   system_prompt?: string;
   is_active: boolean;
   created_at: string;
+}
+
+// EntityInfo - упрощённая версия для клиента
+export interface EntityInfo {
+  name: string;
+  subtitle?: string;
+  avatar_url?: string;
+  intro_url?: string;
 }
 
 // Session (сессия пользователя)
@@ -71,17 +80,18 @@ export type ApiRequest = LoadRequest | MessageRequest | ResetRequest | WipeReque
 
 // API Response types
 export interface LoadResponse {
-  success: boolean;
   session_id: string;
   thread_id: string;
-  entity: Entity;
-  messages: Message[];
+  entity: EntityInfo;
+  welcome_message: string;
 }
 
 export interface MessageResponse {
-  success: boolean;
-  user_message: Message;
-  assistant_message: Message;
+  session_id: string;
+  thread_id: string;
+  type: ContentType;
+  content?: string;
+  media_url?: string;
 }
 
 export interface ResetResponse {
@@ -96,13 +106,14 @@ export interface WipeResponse {
 
 // Chat state
 export interface ChatState {
-  entity: Entity | null;
+  entity: EntityInfo | null;
   session_id: string | null;
   thread_id: string | null;
   messages: Message[];
   isLoading: boolean;
   isSending: boolean;
   error: string | null;
+  introUrl: string | null;
 }
 
 // Toast notification

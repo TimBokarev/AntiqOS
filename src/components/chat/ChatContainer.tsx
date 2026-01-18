@@ -15,6 +15,7 @@ export function ChatContainer({ entitySlug, sessionId }: ChatContainerProps) {
     isLoading,
     isSending,
     error,
+    introUrl,
     sendTextMessage,
     sendImageMessage,
     sendVoiceMessage,
@@ -66,7 +67,7 @@ export function ChatContainer({ entitySlug, sessionId }: ChatContainerProps) {
         isLoading={isSending}
       />
 
-      <MessageList messages={messages} isSending={isSending} />
+      <MessageList messages={messages} isSending={isSending} introUrl={introUrl} />
 
       <MessageInput
         onSendText={sendTextMessage}

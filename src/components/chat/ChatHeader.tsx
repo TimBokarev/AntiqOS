@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import type { Entity } from '../../types';
+import type { EntityInfo } from '../../types';
 import { Button, Modal } from '../ui';
 
 interface ChatHeaderProps {
-  entity: Entity;
+  entity: EntityInfo;
   onReset: () => void;
   onWipe: () => void;
   isLoading: boolean;
