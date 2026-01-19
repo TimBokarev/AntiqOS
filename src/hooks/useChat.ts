@@ -1,9 +1,17 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { EntityInfo, Message, ContentType } from '../types';
-import { loadSession, sendMessage, resetChat, wipeSession } from '../services/api';
+import { sendMessage } from '../services/api';
 import { useSession } from './useSession';
-import { uploadImage, uploadVoiceRecording } from '../services/supabase';
+import {
+  uploadImage,
+  uploadVoiceRecording,
+  getEntityBySlug,
+  createSession,
+  getSession,
+  deleteSession,
+  resetSession,
+} from '../services/supabase';
 
 interface UseChatOptions {
   entitySlug: string;
@@ -37,43 +45,80 @@ export function useChat({ entitySlug, initialSessionId }: UseChatOptions): UseCh
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [introUrl, setIntroUrl] = useState<string | null>(null);
+  const [welcomeText, setWelcomeText] = useState<string>('');
+  const initCalled = useRef(false);
 
   // Initialize session on mount
   useEffect(() => {
+    // Prevent double init in React StrictMode
+    if (initCalled.current) return;
+    initCalled.current = true;
+
     async function init() {
       setIsLoading(true);
       setError(null);
 
       try {
-        // Check localStorage for existing session
+        // 1. Load entity from Supabase
+        const entityData = await getEntityBySlug(entitySlug);
+        if (!entityData) {
+          setError('Character not found');
+          setIsLoading(false);
+          return;
+        }
+
+        // Set entity info
+        const entityInfo: EntityInfo = {
+          name: entityData.name,
+          subtitle: entityData.subtitle,
+          avatar_url: entityData.avatar_url,
+          intro_url: entityData.intro_url,
+        };
+        setEntity(entityInfo);
+        setIntroUrl(entityData.intro_url || null);
+        setWelcomeText(entityData.welcome_message);
+
+        // 2. Check for existing session
         const stored = getStoredSession();
-        const sessionToLoad = initialSessionId || stored?.session_id || null;
+        const sessionIdToLoad = initialSessionId || stored?.session_id || null;
 
-        const response = await loadSession(entitySlug, sessionToLoad);
+        let session;
+        if (sessionIdToLoad) {
+          // Try to load existing session
+          session = await getSession(sessionIdToLoad);
+        }
 
-        setEntity(response.entity);
-        setIntroUrl(response.entity.intro_url || null);
-        setSessionId(response.session_id);
-        setThreadId(response.thread_id);
+        // 3. Create new session if needed
+        if (!session) {
+          session = await createSession(entityData.id);
+          if (!session) {
+            setError('Failed to create session');
+            setIsLoading(false);
+            return;
+          }
+        }
 
-        // Create welcome message locally
+        setSessionId(session.id);
+        setThreadId(session.thread_id);
+
+        // 4. Create welcome message locally
         const welcomeMessage: Message = {
           id: `welcome-${Date.now()}`,
-          session_id: response.session_id,
-          thread_id: response.thread_id,
+          session_id: session.id,
+          thread_id: session.thread_id,
           role: 'assistant',
           content_type: 'text',
-          content: response.welcome_message,
+          content: entityData.welcome_message,
           created_at: new Date().toISOString(),
         };
         setMessages([welcomeMessage]);
 
-        // Save to localStorage
-        saveSession(response.session_id, response.thread_id);
+        // 5. Save to localStorage
+        saveSession(session.id, session.thread_id);
 
-        // Update URL if session_id is different
-        if (!initialSessionId || initialSessionId !== response.session_id) {
-          navigate(`/${entitySlug}/${response.session_id}`, { replace: true });
+        // 6. Update URL if needed
+        if (!initialSessionId || initialSessionId !== session.id) {
+          navigate(`/${entitySlug}/${session.id}`, { replace: true });
         }
       } catch (e) {
         console.error('Failed to initialize chat:', e);
@@ -200,12 +245,23 @@ export function useChat({ entitySlug, initialSessionId }: UseChatOptions): UseCh
     setError(null);
 
     try {
-      const response = await resetChat(entitySlug, sessionId);
+      const newThreadId = await resetSession(sessionId);
 
-      if (response.success) {
-        setThreadId(response.thread_id);
-        setMessages([response.welcome_message]);
-        updateThreadId(response.thread_id);
+      if (newThreadId) {
+        setThreadId(newThreadId);
+        updateThreadId(newThreadId);
+
+        // Create new welcome message
+        const welcomeMessage: Message = {
+          id: `welcome-${Date.now()}`,
+          session_id: sessionId,
+          thread_id: newThreadId,
+          role: 'assistant',
+          content_type: 'text',
+          content: welcomeText,
+          created_at: new Date().toISOString(),
+        };
+        setMessages([welcomeMessage]);
       } else {
         setError('Failed to reset chat');
       }
@@ -215,7 +271,7 @@ export function useChat({ entitySlug, initialSessionId }: UseChatOptions): UseCh
     } finally {
       setIsSending(false);
     }
-  }, [entitySlug, sessionId, updateThreadId]);
+  }, [sessionId, welcomeText, updateThreadId]);
 
   const handleWipe = useCallback(async () => {
     if (!sessionId) return;
@@ -224,9 +280,9 @@ export function useChat({ entitySlug, initialSessionId }: UseChatOptions): UseCh
     setError(null);
 
     try {
-      const response = await wipeSession(entitySlug, sessionId);
+      const success = await deleteSession(sessionId);
 
-      if (response.success) {
+      if (success) {
         clearSession();
         // Reload the page to start fresh
         navigate(`/${entitySlug}`, { replace: true });

@@ -31,32 +31,40 @@ npm run db:init                          # Apply supabase/schema.sql
 
 ### Data Flow
 1. User scans QR → opens `/:entity_slug` route
-2. `useChat` hook calls n8n webhook with `load` event
-3. Webhook returns `{ session_id, thread_id, entity: EntityInfo, welcome_message }`
-4. URL updates to `/:entity_slug/:session_id`
-5. Messages sent via webhook `message` event
-6. Session persisted in localStorage via `useSession` hook
+2. `useChat` hook loads entity from **Supabase directly**
+3. Creates/restores session in Supabase, updates URL to `/:entity_slug/:session_id`
+4. Messages sent via **n8n webhook** (LLM processing)
+5. Session persisted in localStorage via `useSession` hook
+
+### What runs where
+| Operation | Where | Why |
+|-----------|-------|-----|
+| Load entity | Supabase | Direct DB query |
+| Create/get session | Supabase | Direct DB query |
+| Reset (new thread) | Supabase | Just updates thread_id |
+| Wipe (delete all) | Supabase | Deletes session + n8n_chat_histories |
+| **Send message** | **n8n** | Needs LLM for response |
 
 ### Types (`src/types/index.ts`)
 - **Entity** - Full DB entity (id, slug, name, subtitle, avatar_url, intro_url, welcome_message, system_prompt, is_active, created_at)
 - **EntityInfo** - Simplified for client (name, subtitle, avatar_url, intro_url)
-- **LoadResponse** - `{ session_id, thread_id, entity: EntityInfo, welcome_message }`
 
 ### Key Hooks (`src/hooks/`)
-- **useChat** - Main chat logic: load session, send messages (text/image/audio), reset/wipe. Returns `introUrl` for intro image
+- **useChat** - Main chat logic: load entity & session from Supabase, send messages via n8n, reset/wipe via Supabase. Returns `introUrl` for intro image
 - **useSession** - localStorage persistence for session_id and thread_id
 - **useVoiceRecorder** - MediaRecorder API wrapper for voice messages
 
-### API Events (`src/services/api.ts`)
-All requests go to single n8n webhook endpoint (handles n8n array response automatically):
-- `load` - Initialize or restore session
-- `message` - Send text/image/audio message
-- `reset` - Clear chat (new thread, same session)
-- `wipe` - Delete session entirely
+### Supabase Functions (`src/services/supabase.ts`)
+- `getEntityBySlug(slug)` - Load entity by slug
+- `createSession(entityId)` - Create new session with thread_id
+- `getSession(sessionId)` - Load existing session
+- `resetSession(sessionId)` - Generate new thread_id (clear chat)
+- `deleteSession(sessionId)` - Delete session + n8n_chat_histories
+- `uploadImage/uploadVoiceRecording` - Media uploads
 
-### Media Upload (`src/services/supabase.ts`)
-- Images converted to WebP, uploaded to `user-uploads/{session_id}/images/`
-- Voice recordings as WebM, uploaded to `voice-recordings/{session_id}/`
+### n8n Webhook (`src/services/api.ts`)
+Single endpoint for LLM messages only:
+- `message` - Send text/image/audio, get LLM response
 
 ### Component Hierarchy
 ```
@@ -87,5 +95,6 @@ DATABASE_URL=postgresql://postgres.[ref]:[pass]@db.[ref].supabase.co:5432/postgr
 Run `npm run db:init` or execute `supabase/schema.sql` manually. Creates:
 - `entities` - Characters/objects with prompts, avatar_url, intro_url
 - `sessions` - User sessions with thread_id
-- `messages` - Chat history
+- `messages` - Chat history (frontend messages)
+- `n8n_chat_histories` - LLM conversation context (managed by n8n, key: `{session_id}_{thread_id}`)
 - Storage buckets: `entity-avatars`, `user-uploads`, `voice-recordings`
